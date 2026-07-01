@@ -28,8 +28,8 @@
 
       <div class="sliders">
         <label>
-          <span>Filter strength <b id="strengthValue">55%</b></span>
-          <input id="strength" type="range" min="0" max="100" value="55" />
+          <span>Filter strength <b id="strengthValue">85%</b></span>
+          <input id="strength" type="range" min="0" max="100" value="85" />
         </label>
         <label>
           <span>Film grain <b id="grainValue">0.8%</b></span>
@@ -65,6 +65,8 @@
       <div id="comparison" class="comparison empty">
         <canvas id="beforeCanvas"></canvas>
         <canvas id="afterCanvas"></canvas>
+        <div class="compare-label before-label">Before</div>
+        <div class="compare-label after-label">After</div>
         <div id="wipe" class="wipe"></div>
         <input id="compareSlider" class="compare-slider" type="range" min="0" max="100" value="50" aria-label="Before after comparison" />
         <div class="empty-copy">Choose one or more images to begin.</div>

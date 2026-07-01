@@ -123,17 +123,37 @@ function canvasToTensor(canvas) {
   return new ort.Tensor('float32', data, [1, 3, height, width]);
 }
 
-function tensorToCanvas(tensor, sourceCanvas, opts) {
+function tensorToCanvas(tensor) {
   const [,, height, width] = tensor.dims;
   const out = document.createElement('canvas');
   out.width = width;
   out.height = height;
   const ctx = out.getContext('2d');
-  const src = sourceCanvas.getContext('2d').getImageData(0, 0, width, height).data;
   const image = ctx.createImageData(width, height);
   const dst = image.data;
   const data = tensor.data;
   const plane = width * height;
+
+  for (let p = 0, i = 0; p < plane; p++, i += 4) {
+    dst[i] = Math.round(clamp01(data[p]) * 255);
+    dst[i + 1] = Math.round(clamp01(data[plane + p]) * 255);
+    dst[i + 2] = Math.round(clamp01(data[2 * plane + p]) * 255);
+    dst[i + 3] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+  return out;
+}
+
+function styledCanvasFromNeural(sourceCanvas, neuralCanvas, opts) {
+  const { width, height } = sourceCanvas;
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = height;
+  const ctx = out.getContext('2d');
+  const src = sourceCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
+  const neu = neuralCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
+  const image = ctx.createImageData(width, height);
+  const dst = image.data;
   const strength = opts.strength;
   const contrast = opts.contrast;
   const grain = opts.grain;
@@ -144,10 +164,10 @@ function tensorToCanvas(tensor, sourceCanvas, opts) {
   };
   const gaussianish = () => (rand() + rand() + rand() + rand() - 2) / 2;
 
-  for (let p = 0, i = 0; p < plane; p++, i += 4) {
-    let r = src[i] / 255 * (1 - strength) + data[p] * strength;
-    let g = src[i + 1] / 255 * (1 - strength) + data[plane + p] * strength;
-    let b = src[i + 2] / 255 * (1 - strength) + data[2 * plane + p] * strength;
+  for (let i = 0; i < src.length; i += 4) {
+    let r = src[i] / 255 * (1 - strength) + neu[i] / 255 * strength;
+    let g = src[i + 1] / 255 * (1 - strength) + neu[i + 1] / 255 * strength;
+    let b = src[i + 2] / 255 * (1 - strength) + neu[i + 2] / 255 * strength;
 
     if (contrast !== 1) {
       r = (r - 0.5) * contrast + 0.5;
@@ -193,6 +213,7 @@ function selectItem(index) {
   renderGallery();
   renderPreview();
   refreshButtons();
+  autoProcessSelected();
 }
 
 function renderPreview() {
@@ -245,7 +266,7 @@ async function addFiles(fileList) {
       const sourceCanvas = drawImageToCanvas(img, settings().maxEdge);
       const thumbCanvas = drawImageToCanvas(img, 360);
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
-      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, processing: false, error: null });
+      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), neuralCanvas: null, outputCanvas: null, outputBlob: null, processing: false, error: null });
     } catch (err) {
       console.error(err);
     }
@@ -255,6 +276,22 @@ async function addFiles(fileList) {
   setStatus(`${items.length} image${items.length === 1 ? '' : 's'} ready.`);
   renderGallery();
   renderPreview();
+  refreshButtons();
+  autoProcessSelected();
+}
+
+async function restyleItem(item) {
+  if (!item?.neuralCanvas) return;
+  item.outputCanvas = styledCanvasFromNeural(item.sourceCanvas, item.neuralCanvas, settings());
+  item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
+}
+
+async function restyleSelected() {
+  const item = items[selectedIndex];
+  if (!item?.neuralCanvas || item.processing) return;
+  await restyleItem(item);
+  renderPreview();
+  renderGallery();
   refreshButtons();
 }
 
@@ -266,11 +303,13 @@ async function processIndex(index) {
   renderGallery();
   setStatus(`Processing ${index + 1} of ${items.length}: ${item.file.name}`);
   try {
-    const tensor = canvasToTensor(item.sourceCanvas);
-    const results = await session.run({ image: tensor });
-    const filtered = results.filtered || results[session.outputNames[0]];
-    item.outputCanvas = tensorToCanvas(filtered, item.sourceCanvas, settings());
-    item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
+    if (!item.neuralCanvas) {
+      const tensor = canvasToTensor(item.sourceCanvas);
+      const results = await session.run({ image: tensor });
+      const filtered = results.filtered || results[session.outputNames[0]];
+      item.neuralCanvas = tensorToCanvas(filtered);
+    }
+    await restyleItem(item);
   } catch (err) {
     console.error(err);
     item.error = err.message || 'Processing failed';
@@ -281,13 +320,19 @@ async function processIndex(index) {
   }
 }
 
-async function processItems(indices) {
+async function autoProcessSelected() {
+  const item = items[selectedIndex];
+  if (!item || item.outputBlob || item.processing || busy || !session) return;
+  await processItems([selectedIndex], { auto: true });
+}
+
+async function processItems(indices, options = {}) {
   if (busy || !session) return;
   busy = true;
   refreshButtons();
   for (const index of indices) await processIndex(index);
   busy = false;
-  setStatus('Done. Download one image or everything as a ZIP.');
+  setStatus(options.auto ? 'Preview rendered. Move the slider to compare before and after.' : 'Done. Download one image or everything as a ZIP.');
   refreshButtons();
 }
 
@@ -332,7 +377,11 @@ function clearAll() {
   refreshButtons();
 }
 
-['strength', 'grain', 'contrast', 'maxEdge'].forEach(id => els[id].addEventListener('input', updateSliderLabels));
+['strength', 'grain', 'contrast'].forEach(id => els[id].addEventListener('input', () => {
+  updateSliderLabels();
+  restyleSelected();
+}));
+els.maxEdge.addEventListener('input', updateSliderLabels);
 els.fileInput.addEventListener('change', e => addFiles(e.target.files));
 els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('drag'); });
 els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));
