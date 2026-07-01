@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kodachrome Filter</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Adam's neural film filter</p>
+      <h1>Kodachrome Filter</h1>
+      <p class="lede">Compare before and after, batch-process photos, and save filtered images from any phone or desktop browser.</p>
+    </div>
+    <div class="privacy">Images stay in your browser. Nothing is uploaded.</div>
+  </header>
+
+  <main class="app-shell">
+    <section class="panel controls">
+      <label class="drop-zone" id="dropZone">
+        <input id="fileInput" type="file" accept="image/*" multiple />
+        <span class="drop-title">Choose photos</span>
+        <span class="drop-copy">or drag images here</span>
+      </label>
+
+      <div class="sliders">
+        <label>
+          <span>Filter strength <b id="strengthValue">55%</b></span>
+          <input id="strength" type="range" min="0" max="100" value="55" />
+        </label>
+        <label>
+          <span>Film grain <b id="grainValue">0.8%</b></span>
+          <input id="grain" type="range" min="0" max="35" value="8" />
+        </label>
+        <label>
+          <span>Contrast <b id="contrastValue">100%</b></span>
+          <input id="contrast" type="range" min="85" max="120" value="100" />
+        </label>
+        <label>
+          <span>Max output edge <b id="maxEdgeValue">2400 px</b></span>
+          <input id="maxEdge" type="range" min="1024" max="4096" step="128" value="2400" />
+        </label>
+      </div>
+
+      <div class="button-row">
+        <button id="processSelected" class="primary" disabled>Process selected</button>
+        <button id="processAll" disabled>Process all</button>
+      </div>
+      <div class="button-row">
+        <button id="downloadSelected" disabled>Download selected</button>
+        <button id="downloadZip" disabled>Download all ZIP</button>
+      </div>
+
+      <p id="status" class="status">Loading neural filter…</p>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="preview-header">
+        <h2 id="previewTitle">No photo selected</h2>
+        <span id="previewMeta"></span>
+      </div>
+      <div id="comparison" class="comparison empty">
+        <canvas id="beforeCanvas"></canvas>
+        <canvas id="afterCanvas"></canvas>
+        <div id="wipe" class="wipe"></div>
+        <input id="compareSlider" class="compare-slider" type="range" min="0" max="100" value="50" aria-label="Before after comparison" />
+        <div class="empty-copy">Choose one or more images to begin.</div>
+      </div>
+      <div class="preview-actions">
+        <button id="prevBtn" disabled>Previous</button>
+        <button id="nextBtn" disabled>Next</button>
+      </div>
+    </section>
+
+    <section class="panel gallery-panel">
+      <div class="gallery-head">
+        <h2>Batch</h2>
+        <button id="clearBtn" class="danger" disabled>Clear</button>
+      </div>
+      <div id="gallery" class="gallery"></div>
+    </section>
+  </main>
+
+  <footer>
+    Built for GitHub Pages. Uses your trained Kodachrome neural model in-browser.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
