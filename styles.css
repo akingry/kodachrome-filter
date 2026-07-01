@@ -93,6 +93,7 @@ h2 { margin: 0; }
 input[type="range"] { width: 100%; accent-color: var(--gold); }
 .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.6rem; }
 .status { color: var(--muted); min-height: 2.5em; }
+.format-note { color: #b99675; font-size: 0.82rem; line-height: 1.35; margin: 0.75rem 0 0; }
 
 .preview-panel { padding: 1rem; min-height: 520px; }
 .preview-header { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; color: var(--muted); margin-bottom: 0.75rem; }
