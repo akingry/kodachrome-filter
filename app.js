@@ -71,13 +71,10 @@ async function boot() {
 function refreshButtons() {
   const hasItems = items.length > 0;
   const hasSelected = selectedIndex >= 0;
-  const selectedItem = hasSelected ? items[selectedIndex] : null;
-  const selectedDone = !!selectedItem?.outputBlob;
-  const selectedProcessable = !!selectedItem?.sourceCanvas;
+  const selectedDone = hasSelected && items[selectedIndex].outputBlob;
   const anyDone = items.some(x => x.outputBlob);
-  const anyProcessable = items.some(x => x.sourceCanvas);
-  els.processSelected.disabled = busy || !session || !hasSelected || !selectedProcessable;
-  els.processAll.disabled = busy || !session || !hasItems || !anyProcessable;
+  els.processSelected.disabled = busy || !session || !hasSelected;
+  els.processAll.disabled = busy || !session || !hasItems;
   els.downloadSelected.disabled = busy || !selectedDone;
   els.downloadZip.disabled = busy || !anyDone;
   els.prevBtn.disabled = !hasItems || selectedIndex <= 0;
@@ -85,58 +82,13 @@ function refreshButtons() {
   els.clearBtn.disabled = busy || !hasItems;
 }
 
-function isHeicLike(file) {
-  return /hei[cf]$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || '');
-}
-
-function loadImageFromBlob(blob) {
+function imageFromFile(file) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('This browser could not decode the image file.'));
-    };
-    img.src = url;
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
   });
-}
-
-async function imageFromFile(file) {
-  try {
-    return await loadImageFromBlob(file);
-  } catch (firstError) {
-    if (isHeicLike(file) && window.heic2any) {
-      const converted = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.95 });
-      const blob = Array.isArray(converted) ? converted[0] : converted;
-      return await loadImageFromBlob(blob);
-    }
-    throw firstError;
-  }
-}
-
-function makePlaceholderCanvas(label, detail = '') {
-  const canvas = document.createElement('canvas');
-  canvas.width = 360;
-  canvas.height = 360;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#1b120e';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = 'rgba(244,185,90,0.45)';
-  ctx.lineWidth = 4;
-  ctx.strokeRect(14, 14, canvas.width - 28, canvas.height - 28);
-  ctx.fillStyle = '#f4b95a';
-  ctx.font = 'bold 24px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(label, canvas.width / 2, 160);
-  ctx.fillStyle = '#c9ad8f';
-  ctx.font = '16px system-ui, sans-serif';
-  const text = detail.length > 34 ? detail.slice(0, 31) + '…' : detail;
-  ctx.fillText(text, canvas.width / 2, 195);
-  return canvas;
 }
 
 function fitSize(w, h, maxEdge) {
@@ -171,37 +123,17 @@ function canvasToTensor(canvas) {
   return new ort.Tensor('float32', data, [1, 3, height, width]);
 }
 
-function tensorToCanvas(tensor) {
+function tensorToCanvas(tensor, sourceCanvas, opts) {
   const [,, height, width] = tensor.dims;
   const out = document.createElement('canvas');
   out.width = width;
   out.height = height;
   const ctx = out.getContext('2d');
+  const src = sourceCanvas.getContext('2d').getImageData(0, 0, width, height).data;
   const image = ctx.createImageData(width, height);
   const dst = image.data;
   const data = tensor.data;
   const plane = width * height;
-
-  for (let p = 0, i = 0; p < plane; p++, i += 4) {
-    dst[i] = Math.round(clamp01(data[p]) * 255);
-    dst[i + 1] = Math.round(clamp01(data[plane + p]) * 255);
-    dst[i + 2] = Math.round(clamp01(data[2 * plane + p]) * 255);
-    dst[i + 3] = 255;
-  }
-  ctx.putImageData(image, 0, 0);
-  return out;
-}
-
-function styledCanvasFromNeural(sourceCanvas, neuralCanvas, opts) {
-  const { width, height } = sourceCanvas;
-  const out = document.createElement('canvas');
-  out.width = width;
-  out.height = height;
-  const ctx = out.getContext('2d');
-  const src = sourceCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
-  const neu = neuralCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
-  const image = ctx.createImageData(width, height);
-  const dst = image.data;
   const strength = opts.strength;
   const contrast = opts.contrast;
   const grain = opts.grain;
@@ -212,10 +144,10 @@ function styledCanvasFromNeural(sourceCanvas, neuralCanvas, opts) {
   };
   const gaussianish = () => (rand() + rand() + rand() + rand() - 2) / 2;
 
-  for (let i = 0; i < src.length; i += 4) {
-    let r = src[i] / 255 * (1 - strength) + neu[i] / 255 * strength;
-    let g = src[i + 1] / 255 * (1 - strength) + neu[i + 1] / 255 * strength;
-    let b = src[i + 2] / 255 * (1 - strength) + neu[i + 2] / 255 * strength;
+  for (let p = 0, i = 0; p < plane; p++, i += 4) {
+    let r = src[i] / 255 * (1 - strength) + data[p] * strength;
+    let g = src[i + 1] / 255 * (1 - strength) + data[plane + p] * strength;
+    let b = src[i + 2] / 255 * (1 - strength) + data[2 * plane + p] * strength;
 
     if (contrast !== 1) {
       r = (r - 0.5) * contrast + 0.5;
@@ -261,7 +193,6 @@ function selectItem(index) {
   renderGallery();
   renderPreview();
   refreshButtons();
-  autoProcessSelected();
 }
 
 function renderPreview() {
@@ -274,15 +205,6 @@ function renderPreview() {
   }
   els.comparison.classList.remove('empty');
   els.previewTitle.textContent = item.file.name;
-  if (!item.sourceCanvas) {
-    els.previewMeta.textContent = 'Cannot load';
-    const placeholder = makePlaceholderCanvas('Cannot load', item.error || item.file.name);
-    copyCanvas(placeholder, els.beforeCanvas);
-    copyCanvas(placeholder, els.afterCanvas);
-    setStatus(item.error || 'This image could not be loaded.');
-    updateComparisonClip();
-    return;
-  }
   els.previewMeta.textContent = `${item.sourceCanvas.width} × ${item.sourceCanvas.height}`;
   copyCanvas(item.sourceCanvas, els.beforeCanvas);
   copyCanvas(item.outputCanvas || item.sourceCanvas, els.afterCanvas);
@@ -317,64 +239,38 @@ async function addFiles(fileList) {
   busy = true;
   refreshButtons();
   setStatus(`Loading ${files.length} image${files.length === 1 ? '' : 's'}…`);
-  let failed = 0;
   for (const file of files) {
     try {
       const img = await imageFromFile(file);
       const sourceCanvas = drawImageToCanvas(img, settings().maxEdge);
       const thumbCanvas = drawImageToCanvas(img, 360);
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
-      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), neuralCanvas: null, outputCanvas: null, outputBlob: null, processing: false, error: null });
+      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, processing: false, error: null });
     } catch (err) {
-      failed += 1;
-      console.error('Could not load image', file.name, err);
-      const message = isHeicLike(file)
-        ? 'HEIC/HEIF could not be converted in this browser. Try Camera Settings → Formats → Most Compatible, or export as JPEG.'
-        : (err.message || 'Could not decode this image. Try JPEG or PNG.');
-      const thumbCanvas = makePlaceholderCanvas('Cannot load', file.name);
-      const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
-      items.push({ file, sourceCanvas: null, thumbUrl: URL.createObjectURL(thumbBlob), neuralCanvas: null, outputCanvas: null, outputBlob: null, processing: false, error: message });
+      console.error(err);
     }
   }
-  if (selectedIndex === -1 && items.length) selectedIndex = items.findIndex(item => item.sourceCanvas) >= 0 ? items.findIndex(item => item.sourceCanvas) : 0;
+  if (selectedIndex === -1 && items.length) selectedIndex = 0;
   busy = false;
-  setStatus(failed ? `${items.length - failed} image${items.length - failed === 1 ? '' : 's'} ready; ${failed} could not be loaded.` : `${items.length} image${items.length === 1 ? '' : 's'} ready.`);
+  setStatus(`${items.length} image${items.length === 1 ? '' : 's'} ready.`);
   renderGallery();
   renderPreview();
-  refreshButtons();
-  autoProcessSelected();
-}
-
-async function restyleItem(item) {
-  if (!item?.neuralCanvas) return;
-  item.outputCanvas = styledCanvasFromNeural(item.sourceCanvas, item.neuralCanvas, settings());
-  item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
-}
-
-async function restyleSelected() {
-  const item = items[selectedIndex];
-  if (!item?.neuralCanvas || item.processing) return;
-  await restyleItem(item);
-  renderPreview();
-  renderGallery();
   refreshButtons();
 }
 
 async function processIndex(index) {
   const item = items[index];
-  if (!item || !session || !item.sourceCanvas) return;
+  if (!item || !session) return;
   item.processing = true;
   item.error = null;
   renderGallery();
   setStatus(`Processing ${index + 1} of ${items.length}: ${item.file.name}`);
   try {
-    if (!item.neuralCanvas) {
-      const tensor = canvasToTensor(item.sourceCanvas);
-      const results = await session.run({ image: tensor });
-      const filtered = results.filtered || results[session.outputNames[0]];
-      item.neuralCanvas = tensorToCanvas(filtered);
-    }
-    await restyleItem(item);
+    const tensor = canvasToTensor(item.sourceCanvas);
+    const results = await session.run({ image: tensor });
+    const filtered = results.filtered || results[session.outputNames[0]];
+    item.outputCanvas = tensorToCanvas(filtered, item.sourceCanvas, settings());
+    item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
   } catch (err) {
     console.error(err);
     item.error = err.message || 'Processing failed';
@@ -385,19 +281,13 @@ async function processIndex(index) {
   }
 }
 
-async function autoProcessSelected() {
-  const item = items[selectedIndex];
-  if (!item || !item.sourceCanvas || item.outputBlob || item.processing || busy || !session) return;
-  await processItems([selectedIndex], { auto: true });
-}
-
-async function processItems(indices, options = {}) {
+async function processItems(indices) {
   if (busy || !session) return;
   busy = true;
   refreshButtons();
   for (const index of indices) await processIndex(index);
   busy = false;
-  setStatus(options.auto ? 'Preview rendered. Move the slider to compare before and after.' : 'Done. Download one image or everything as a ZIP.');
+  setStatus('Done. Download one image or everything as a ZIP.');
   refreshButtons();
 }
 
@@ -442,11 +332,7 @@ function clearAll() {
   refreshButtons();
 }
 
-['strength', 'grain', 'contrast'].forEach(id => els[id].addEventListener('input', () => {
-  updateSliderLabels();
-  restyleSelected();
-}));
-els.maxEdge.addEventListener('input', updateSliderLabels);
+['strength', 'grain', 'contrast', 'maxEdge'].forEach(id => els[id].addEventListener('input', updateSliderLabels));
 els.fileInput.addEventListener('change', e => addFiles(e.target.files));
 els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('drag'); });
 els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));

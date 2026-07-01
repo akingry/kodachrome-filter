@@ -6,7 +6,6 @@
   <title>Kodachrome Filter</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
@@ -29,8 +28,8 @@
 
       <div class="sliders">
         <label>
-          <span>Filter strength <b id="strengthValue">85%</b></span>
-          <input id="strength" type="range" min="0" max="100" value="85" />
+          <span>Filter strength <b id="strengthValue">55%</b></span>
+          <input id="strength" type="range" min="0" max="100" value="55" />
         </label>
         <label>
           <span>Film grain <b id="grainValue">0.8%</b></span>
@@ -56,7 +55,6 @@
       </div>
 
       <p id="status" class="status">Loading neural filter…</p>
-      <p class="format-note">Best formats: JPEG, PNG, WebP. HEIC/HEIF photos are converted when the browser allows it; if one will not load, export it as JPEG.</p>
     </section>
 
     <section class="panel preview-panel">
@@ -67,8 +65,6 @@
       <div id="comparison" class="comparison empty">
         <canvas id="beforeCanvas"></canvas>
         <canvas id="afterCanvas"></canvas>
-        <div class="compare-label before-label">Before</div>
-        <div class="compare-label after-label">After</div>
         <div id="wipe" class="wipe"></div>
         <input id="compareSlider" class="compare-slider" type="range" min="0" max="100" value="50" aria-label="Before after comparison" />
         <div class="empty-copy">Choose one or more images to begin.</div>
