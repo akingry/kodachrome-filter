@@ -71,12 +71,11 @@ async function boot() {
 function refreshButtons() {
   const hasItems = items.length > 0;
   const hasSelected = selectedIndex >= 0;
-  const selectedDone = hasSelected && items[selectedIndex].outputBlob;
-  const anyDone = items.some(x => x.outputBlob);
-  els.processSelected.disabled = busy || !session || !hasSelected;
+  const checked = items.filter(x => x.checked);
+  els.processSelected.disabled = busy || !session || checked.length === 0;
   els.processAll.disabled = busy || !session || !hasItems;
-  els.downloadSelected.disabled = busy || !selectedDone;
-  els.downloadZip.disabled = busy || !anyDone;
+  els.downloadSelected.disabled = busy || checked.length === 0;
+  els.downloadZip.disabled = busy || !hasItems;
   els.prevBtn.disabled = !hasItems || selectedIndex <= 0;
   els.nextBtn.disabled = !hasItems || selectedIndex >= items.length - 1;
   els.clearBtn.disabled = busy || !hasItems;
@@ -193,6 +192,7 @@ function selectItem(index) {
   renderGallery();
   renderPreview();
   refreshButtons();
+  if (!items[index].outputBlob && session && !busy) processItems([index], { auto: true });
 }
 
 function renderPreview() {
@@ -217,6 +217,16 @@ function renderGallery() {
     const card = document.createElement('div');
     card.className = `card ${index === selectedIndex ? 'selected' : ''}`;
     card.onclick = () => selectItem(index);
+    const check = document.createElement('input');
+    check.className = 'card-check';
+    check.type = 'checkbox';
+    check.checked = item.checked;
+    check.title = 'Include when saving checked files';
+    check.onclick = event => {
+      event.stopPropagation();
+      item.checked = check.checked;
+      refreshButtons();
+    };
     const img = document.createElement('img');
     img.src = item.thumbUrl;
     const body = document.createElement('div');
@@ -228,7 +238,7 @@ function renderGallery() {
     badge.className = `badge ${item.error ? 'error' : item.outputBlob ? 'done' : ''}`;
     badge.textContent = item.error ? 'Error' : item.processing ? 'Processing…' : item.outputBlob ? 'Filtered' : 'Ready';
     body.append(title, badge);
-    card.append(img, body);
+    card.append(check, img, body);
     els.gallery.append(card);
   });
 }
@@ -245,7 +255,7 @@ async function addFiles(fileList) {
       const sourceCanvas = drawImageToCanvas(img, settings().maxEdge);
       const thumbCanvas = drawImageToCanvas(img, 360);
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
-      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, processing: false, error: null });
+      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, processing: false, error: null, checked: true });
     } catch (err) {
       console.error(err);
     }
@@ -256,6 +266,7 @@ async function addFiles(fileList) {
   renderGallery();
   renderPreview();
   refreshButtons();
+  if (selectedIndex >= 0 && session && !busy) processItems([selectedIndex], { auto: true });
 }
 
 async function processIndex(index) {
@@ -281,13 +292,13 @@ async function processIndex(index) {
   }
 }
 
-async function processItems(indices) {
+async function processItems(indices, options = {}) {
   if (busy || !session) return;
   busy = true;
   refreshButtons();
   for (const index of indices) await processIndex(index);
   busy = false;
-  setStatus('Done. Download one image or everything as a ZIP.');
+  setStatus(options.auto ? 'Filtered preview ready. Save checked files whenever you want.' : 'Done. Save checked files or everything as a ZIP.');
   refreshButtons();
 }
 
@@ -307,19 +318,27 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
 }
 
-async function downloadZip() {
-  const done = items.filter(x => x.outputBlob);
-  if (!done.length) return;
+async function downloadItemsZip(list, filename) {
+  if (!list.length || busy) return;
+  const missing = list
+    .map(item => items.indexOf(item))
+    .filter(index => index >= 0 && !items[index].outputBlob);
+  if (missing.length) await processItems(missing);
   busy = true;
   refreshButtons();
+  const done = list.filter(x => x.outputBlob);
   setStatus(`Building ZIP with ${done.length} image${done.length === 1 ? '' : 's'}…`);
   const zip = new JSZip();
   for (const item of done) zip.file(filteredName(item.file.name), item.outputBlob);
   const blob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(blob, 'kodachrome_filtered.zip');
+  downloadBlob(blob, filename);
   busy = false;
   setStatus('ZIP ready.');
   refreshButtons();
+}
+
+async function downloadZip() {
+  await downloadItemsZip(items, 'kodachrome_all_filtered.zip');
 }
 
 function clearAll() {
@@ -338,12 +357,9 @@ els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZon
 els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));
 els.dropZone.addEventListener('drop', e => { e.preventDefault(); els.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
 els.compareSlider.addEventListener('input', updateComparisonClip);
-els.processSelected.addEventListener('click', () => processItems([selectedIndex]));
+els.processSelected.addEventListener('click', () => processItems(items.map((item, index) => item.checked ? index : -1).filter(index => index >= 0)));
 els.processAll.addEventListener('click', () => processItems(items.map((_, i) => i)));
-els.downloadSelected.addEventListener('click', () => {
-  const item = items[selectedIndex];
-  if (item?.outputBlob) downloadBlob(item.outputBlob, filteredName(item.file.name));
-});
+els.downloadSelected.addEventListener('click', () => downloadItemsZip(items.filter(item => item.checked), 'kodachrome_checked_filtered.zip'));
 els.downloadZip.addEventListener('click', downloadZip);
 els.prevBtn.addEventListener('click', () => selectItem(selectedIndex - 1));
 els.nextBtn.addEventListener('click', () => selectItem(selectedIndex + 1));

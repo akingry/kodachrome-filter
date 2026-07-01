@@ -119,6 +119,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
 .gallery-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.8rem; }
 .card {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 16px;
   overflow: hidden;
@@ -126,12 +127,23 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   cursor: pointer;
 }
 .card.selected { outline: 2px solid var(--gold); }
+.card-check {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--gold);
+}
 .card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; background: #0b0806; }
 .card-body { padding: 0.55rem; display: grid; gap: 0.35rem; }
 .card-title { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { color: var(--muted); font-size: 0.76rem; }
 .badge.done { color: var(--green); }
 .badge.error { color: #ff9b8d; }
+.card-tools { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.card-tools label { color: var(--muted); font-size: 0.76rem; }
 footer { color: var(--muted); text-align: center; padding: 0 1rem 2rem; }
 
 @media (max-width: 900px) {
