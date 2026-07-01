@@ -1,0 +1,5 @@
+node_modules/
+e2e-screenshot.png
+e2e-invalid-screenshot.png
+test-upload.svg
+fake-photo.heic

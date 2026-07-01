@@ -71,10 +71,13 @@ async function boot() {
 function refreshButtons() {
   const hasItems = items.length > 0;
   const hasSelected = selectedIndex >= 0;
-  const selectedDone = hasSelected && items[selectedIndex].outputBlob;
+  const selectedItem = hasSelected ? items[selectedIndex] : null;
+  const selectedDone = !!selectedItem?.outputBlob;
+  const selectedProcessable = !!selectedItem?.sourceCanvas;
   const anyDone = items.some(x => x.outputBlob);
-  els.processSelected.disabled = busy || !session || !hasSelected;
-  els.processAll.disabled = busy || !session || !hasItems;
+  const anyProcessable = items.some(x => x.sourceCanvas);
+  els.processSelected.disabled = busy || !session || !hasSelected || !selectedProcessable;
+  els.processAll.disabled = busy || !session || !hasItems || !anyProcessable;
   els.downloadSelected.disabled = busy || !selectedDone;
   els.downloadZip.disabled = busy || !anyDone;
   els.prevBtn.disabled = !hasItems || selectedIndex <= 0;
@@ -82,13 +85,58 @@ function refreshButtons() {
   els.clearBtn.disabled = busy || !hasItems;
 }
 
-function imageFromFile(file) {
+function isHeicLike(file) {
+  return /hei[cf]$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || '');
+}
+
+function loadImageFromBlob(blob) {
   return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('This browser could not decode the image file.'));
+    };
+    img.src = url;
   });
+}
+
+async function imageFromFile(file) {
+  try {
+    return await loadImageFromBlob(file);
+  } catch (firstError) {
+    if (isHeicLike(file) && window.heic2any) {
+      const converted = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.95 });
+      const blob = Array.isArray(converted) ? converted[0] : converted;
+      return await loadImageFromBlob(blob);
+    }
+    throw firstError;
+  }
+}
+
+function makePlaceholderCanvas(label, detail = '') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 360;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1b120e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(244,185,90,0.45)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(14, 14, canvas.width - 28, canvas.height - 28);
+  ctx.fillStyle = '#f4b95a';
+  ctx.font = 'bold 24px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, canvas.width / 2, 160);
+  ctx.fillStyle = '#c9ad8f';
+  ctx.font = '16px system-ui, sans-serif';
+  const text = detail.length > 34 ? detail.slice(0, 31) + '…' : detail;
+  ctx.fillText(text, canvas.width / 2, 195);
+  return canvas;
 }
 
 function fitSize(w, h, maxEdge) {
@@ -226,6 +274,15 @@ function renderPreview() {
   }
   els.comparison.classList.remove('empty');
   els.previewTitle.textContent = item.file.name;
+  if (!item.sourceCanvas) {
+    els.previewMeta.textContent = 'Cannot load';
+    const placeholder = makePlaceholderCanvas('Cannot load', item.error || item.file.name);
+    copyCanvas(placeholder, els.beforeCanvas);
+    copyCanvas(placeholder, els.afterCanvas);
+    setStatus(item.error || 'This image could not be loaded.');
+    updateComparisonClip();
+    return;
+  }
   els.previewMeta.textContent = `${item.sourceCanvas.width} × ${item.sourceCanvas.height}`;
   copyCanvas(item.sourceCanvas, els.beforeCanvas);
   copyCanvas(item.outputCanvas || item.sourceCanvas, els.afterCanvas);
@@ -260,6 +317,7 @@ async function addFiles(fileList) {
   busy = true;
   refreshButtons();
   setStatus(`Loading ${files.length} image${files.length === 1 ? '' : 's'}…`);
+  let failed = 0;
   for (const file of files) {
     try {
       const img = await imageFromFile(file);
@@ -268,12 +326,19 @@ async function addFiles(fileList) {
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
       items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), neuralCanvas: null, outputCanvas: null, outputBlob: null, processing: false, error: null });
     } catch (err) {
-      console.error(err);
+      failed += 1;
+      console.error('Could not load image', file.name, err);
+      const message = isHeicLike(file)
+        ? 'HEIC/HEIF could not be converted in this browser. Try Camera Settings → Formats → Most Compatible, or export as JPEG.'
+        : (err.message || 'Could not decode this image. Try JPEG or PNG.');
+      const thumbCanvas = makePlaceholderCanvas('Cannot load', file.name);
+      const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
+      items.push({ file, sourceCanvas: null, thumbUrl: URL.createObjectURL(thumbBlob), neuralCanvas: null, outputCanvas: null, outputBlob: null, processing: false, error: message });
     }
   }
-  if (selectedIndex === -1 && items.length) selectedIndex = 0;
+  if (selectedIndex === -1 && items.length) selectedIndex = items.findIndex(item => item.sourceCanvas) >= 0 ? items.findIndex(item => item.sourceCanvas) : 0;
   busy = false;
-  setStatus(`${items.length} image${items.length === 1 ? '' : 's'} ready.`);
+  setStatus(failed ? `${items.length - failed} image${items.length - failed === 1 ? '' : 's'} ready; ${failed} could not be loaded.` : `${items.length} image${items.length === 1 ? '' : 's'} ready.`);
   renderGallery();
   renderPreview();
   refreshButtons();
@@ -297,7 +362,7 @@ async function restyleSelected() {
 
 async function processIndex(index) {
   const item = items[index];
-  if (!item || !session) return;
+  if (!item || !session || !item.sourceCanvas) return;
   item.processing = true;
   item.error = null;
   renderGallery();
@@ -322,7 +387,7 @@ async function processIndex(index) {
 
 async function autoProcessSelected() {
   const item = items[selectedIndex];
-  if (!item || item.outputBlob || item.processing || busy || !session) return;
+  if (!item || !item.sourceCanvas || item.outputBlob || item.processing || busy || !session) return;
   await processItems([selectedIndex], { auto: true });
 }
 
