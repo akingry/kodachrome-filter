@@ -84,10 +84,22 @@ function refreshButtons() {
 function imageFromFile(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Could not read ${file.name}. Try JPEG, PNG, or WebP; some browsers cannot preview HEIC/RAW files.`));
+    };
+    img.src = url;
   });
+}
+
+function looksLikeImage(file) {
+  if (file.type && file.type.startsWith('image/')) return true;
+  return /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name || '');
 }
 
 function fitSize(w, h, maxEdge) {
@@ -244,25 +256,42 @@ function renderGallery() {
 }
 
 async function addFiles(fileList) {
-  const files = [...fileList].filter(file => file.type.startsWith('image/'));
-  if (!files.length) return;
+  const all = [...fileList];
+  const files = all.filter(looksLikeImage);
+  const rejected = all.length - files.length;
+  if (!files.length) {
+    setStatus(rejected ? 'No supported image files found. Try JPEG, PNG, or WebP.' : 'No files selected.');
+    return;
+  }
   busy = true;
   refreshButtons();
   setStatus(`Loading ${files.length} image${files.length === 1 ? '' : 's'}…`);
+  let loaded = 0;
+  let failed = 0;
   for (const file of files) {
     try {
       const img = await imageFromFile(file);
       const sourceCanvas = drawImageToCanvas(img, settings().maxEdge);
       const thumbCanvas = drawImageToCanvas(img, 360);
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
+      if (!thumbBlob) throw new Error(`Could not make a thumbnail for ${file.name}.`);
       items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, processing: false, error: null, checked: true });
+      loaded++;
     } catch (err) {
       console.error(err);
+      failed++;
     }
   }
   if (selectedIndex === -1 && items.length) selectedIndex = 0;
   busy = false;
-  setStatus(`${items.length} image${items.length === 1 ? '' : 's'} ready.`);
+  if (loaded) {
+    const notes = [];
+    if (failed) notes.push(`${failed} could not be previewed`);
+    if (rejected) notes.push(`${rejected} ignored`);
+    setStatus(`${items.length} image${items.length === 1 ? '' : 's'} ready${notes.length ? ` (${notes.join(', ')}).` : '.'}`);
+  } else {
+    setStatus('No image preview could be created. Try a standard JPEG, PNG, or WebP file.');
+  }
   renderGallery();
   renderPreview();
   refreshButtons();
@@ -352,7 +381,10 @@ function clearAll() {
 }
 
 ['strength', 'grain', 'contrast', 'maxEdge'].forEach(id => els[id].addEventListener('input', updateSliderLabels));
-els.fileInput.addEventListener('change', e => addFiles(e.target.files));
+els.fileInput.addEventListener('change', async e => {
+  await addFiles(e.target.files);
+  e.target.value = '';
+});
 els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('drag'); });
 els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));
 els.dropZone.addEventListener('drop', e => { e.preventDefault(); els.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
