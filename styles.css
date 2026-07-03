@@ -104,15 +104,47 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   min-height: 440px;
   background: #090706;
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  border: 1px solid rgba(255, 222, 172, 0.12);
 }
-.comparison canvas { position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; }
-#beforeCanvas { z-index: 1; }
-#afterCanvas { z-index: 2; clip-path: inset(0 0 0 50%); }
-.wipe { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; background: var(--gold); z-index: 3; box-shadow: 0 0 18px rgba(244,185,90,0.8); }
-.compare-slider { position: absolute; inset: auto 1rem 1rem; z-index: 4; width: calc(100% - 2rem); }
-.empty canvas, .empty .wipe, .empty .compare-slider { display: none; }
-.empty-copy { color: var(--muted); z-index: 5; }
+.compare-pane {
+  min-width: 0;
+  min-height: 440px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  place-items: stretch;
+  background: rgba(0, 0, 0, 0.22);
+}
+.compare-label {
+  padding: 0.65rem 0.85rem;
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.32);
+  border-bottom: 1px solid rgba(255, 222, 172, 0.12);
+}
+.comparison canvas {
+  align-self: center;
+  justify-self: center;
+  max-width: 100%;
+  max-height: 390px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.empty .compare-pane { display: none; }
+.empty-copy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  z-index: 5;
+}
+.comparison:not(.empty) .empty-copy { display: none; }
 .preview-actions { display: flex; justify-content: center; gap: 0.65rem; margin-top: 0.8rem; }
 
 .gallery-panel { grid-column: 2; padding: 1rem; }
@@ -152,5 +184,7 @@ footer { color: var(--muted); text-align: center; padding: 0 1rem 2rem; }
   .app-shell { grid-template-columns: 1fr; }
   .controls { position: static; }
   .gallery-panel { grid-column: auto; }
-  .comparison { min-height: 360px; }
+  .comparison { grid-template-columns: 1fr; min-height: 360px; }
+  .compare-pane { min-height: 320px; }
+  .comparison canvas { max-height: 270px; }
 }

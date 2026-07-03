@@ -63,10 +63,14 @@
         <span id="previewMeta"></span>
       </div>
       <div id="comparison" class="comparison empty">
-        <canvas id="beforeCanvas"></canvas>
-        <canvas id="afterCanvas"></canvas>
-        <div id="wipe" class="wipe"></div>
-        <input id="compareSlider" class="compare-slider" type="range" min="0" max="100" value="50" aria-label="Before after comparison" />
+        <div class="compare-pane original-pane">
+          <div class="compare-label">Original</div>
+          <canvas id="beforeCanvas"></canvas>
+        </div>
+        <div class="compare-pane filtered-pane">
+          <div class="compare-label">Filtered preview</div>
+          <canvas id="afterCanvas"></canvas>
+        </div>
         <div class="empty-copy">Choose one or more images to begin.</div>
       </div>
       <div class="preview-actions">

@@ -30,6 +30,8 @@ const els = {
 };
 
 let session = null;
+let neuralAvailable = false;
+let fallbackMode = false;
 let items = [];
 let selectedIndex = -1;
 let busy = false;
@@ -51,19 +53,41 @@ function updateSliderLabels() {
   els.maxEdgeValue.textContent = `${els.maxEdge.value} px`;
 }
 
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
 async function boot() {
   updateSliderLabels();
+  // Reliability first: the ONNX model can block or fail on some browsers/networks.
+  // The app is immediately usable with the built-in local filter; add ?neural=1 to try the model.
+  session = null;
+  neuralAvailable = false;
+  fallbackMode = true;
+  setStatus('Ready. Choose photos to apply the local Kodachrome-style filter.');
+  refreshButtons();
+
+  if (!new URLSearchParams(window.location.search).has('neural')) return;
   try {
-    if (!window.ort) throw new Error('ONNX Runtime did not load. Check your internet connection.');
+    if (!window.ort) throw new Error('ONNX Runtime did not load.');
+    setStatus('Trying to load the neural model…');
     ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
-    session = await ort.InferenceSession.create(MODEL_URL, {
+    session = await withTimeout(ort.InferenceSession.create(MODEL_URL, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
-    });
+    }), 8000, 'Neural model load timed out.');
+    neuralAvailable = true;
+    fallbackMode = false;
     setStatus('Ready. Choose photos to apply the neural Kodachrome filter.');
   } catch (err) {
-    console.error(err);
-    setStatus(`Could not load neural filter: ${err.message}`);
+    console.warn('Neural filter unavailable; keeping local browser film filter.', err);
+    session = null;
+    neuralAvailable = false;
+    fallbackMode = true;
+    setStatus('Ready. Neural model is unavailable, so the built-in local Kodachrome-style filter will be used.');
   }
   refreshButtons();
 }
@@ -72,8 +96,8 @@ function refreshButtons() {
   const hasItems = items.length > 0;
   const hasSelected = selectedIndex >= 0;
   const checked = items.filter(x => x.checked);
-  els.processSelected.disabled = busy || !session || checked.length === 0;
-  els.processAll.disabled = busy || !session || !hasItems;
+  els.processSelected.disabled = busy || checked.length === 0;
+  els.processAll.disabled = busy || !hasItems;
   els.downloadSelected.disabled = busy || checked.length === 0;
   els.downloadZip.disabled = busy || !hasItems;
   els.prevBtn.disabled = !hasItems || selectedIndex <= 0;
@@ -180,6 +204,63 @@ function tensorToCanvas(tensor, sourceCanvas, opts) {
   return out;
 }
 
+function localKodachromeCanvas(sourceCanvas, opts) {
+  const out = document.createElement('canvas');
+  out.width = sourceCanvas.width;
+  out.height = sourceCanvas.height;
+  const srcCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const outCtx = out.getContext('2d');
+  const image = srcCtx.getImageData(0, 0, out.width, out.height);
+  const data = image.data;
+  const strength = opts.strength;
+  const contrast = opts.contrast;
+  const grain = opts.grain;
+  let seed = 98765;
+  const rand = () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const gaussianish = () => (rand() + rand() + rand() + rand() - 2) / 2;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const sr = data[i] / 255;
+    const sg = data[i + 1] / 255;
+    const sb = data[i + 2] / 255;
+    const lum = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+
+    // Warm highlights, deeper cyans/shadows, saturated reds/yellows: a robust local fallback.
+    let r = sr * 1.10 + sg * 0.035 - sb * 0.025;
+    let g = sg * 1.02 + sr * 0.018;
+    let b = sb * 0.86 + sg * 0.045;
+    r += Math.max(0, lum - 0.52) * 0.08;
+    g += Math.max(0, lum - 0.50) * 0.035;
+    b -= Math.max(0, lum - 0.45) * 0.055;
+    r = (r - 0.5) * 1.08 + 0.5;
+    g = (g - 0.5) * 1.04 + 0.5;
+    b = (b - 0.5) * 1.10 + 0.5;
+
+    r = sr * (1 - strength) + r * strength;
+    g = sg * (1 - strength) + g * strength;
+    b = sb * (1 - strength) + b * strength;
+
+    if (contrast !== 1) {
+      r = (r - 0.5) * contrast + 0.5;
+      g = (g - 0.5) * contrast + 0.5;
+      b = (b - 0.5) * contrast + 0.5;
+    }
+    if (grain > 0) {
+      const noise = gaussianish() * grain * (0.45 + 0.75 * (1 - lum));
+      r += noise; g += noise; b += noise;
+    }
+
+    data[i] = Math.round(clamp01(r) * 255);
+    data[i + 1] = Math.round(clamp01(g) * 255);
+    data[i + 2] = Math.round(clamp01(b) * 255);
+  }
+  outCtx.putImageData(image, 0, 0);
+  return out;
+}
+
 async function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.95) {
   return new Promise(resolve => canvas.toBlob(resolve, type, quality));
 }
@@ -193,9 +274,7 @@ function copyCanvas(src, dst) {
 }
 
 function updateComparisonClip() {
-  const v = Number(els.compareSlider.value);
-  els.afterCanvas.style.clipPath = `inset(0 0 0 ${v}%)`;
-  els.wipe.style.left = `${v}%`;
+  // The preview is intentionally side-by-side now; this no-op keeps older cached markup harmless.
 }
 
 function selectItem(index) {
@@ -204,7 +283,7 @@ function selectItem(index) {
   renderGallery();
   renderPreview();
   refreshButtons();
-  if (!items[index].outputBlob && session && !busy) processItems([index], { auto: true });
+  if (!items[index].outputBlob && !busy) processItems([index], { auto: true });
 }
 
 function renderPreview() {
@@ -295,25 +374,46 @@ async function addFiles(fileList) {
   renderGallery();
   renderPreview();
   refreshButtons();
-  if (selectedIndex >= 0 && session && !busy) processItems([selectedIndex], { auto: true });
+  if (selectedIndex >= 0 && !busy) processItems([selectedIndex], { auto: true });
 }
 
 async function processIndex(index) {
   const item = items[index];
-  if (!item || !session) return;
+  if (!item) return;
   item.processing = true;
   item.error = null;
   renderGallery();
   setStatus(`Processing ${index + 1} of ${items.length}: ${item.file.name}`);
   try {
-    const tensor = canvasToTensor(item.sourceCanvas);
-    const results = await session.run({ image: tensor });
-    const filtered = results.filtered || results[session.outputNames[0]];
-    item.outputCanvas = tensorToCanvas(filtered, item.sourceCanvas, settings());
+    if (neuralAvailable && session) {
+      const tensor = canvasToTensor(item.sourceCanvas);
+      const inputName = session.inputNames?.[0] || 'image';
+      const outputName = session.outputNames?.[0];
+      const results = await session.run({ [inputName]: tensor });
+      const filtered = results.filtered || (outputName ? results[outputName] : Object.values(results)[0]);
+      if (!filtered) throw new Error('The model did not return an image tensor.');
+      item.outputCanvas = tensorToCanvas(filtered, item.sourceCanvas, settings());
+    } else {
+      item.outputCanvas = localKodachromeCanvas(item.sourceCanvas, settings());
+    }
     item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
+    if (!item.outputBlob) throw new Error('Could not encode the filtered image.');
   } catch (err) {
     console.error(err);
-    item.error = err.message || 'Processing failed';
+    if (neuralAvailable) {
+      console.warn('Neural pass failed; retrying with local browser film filter.', err);
+      try {
+        item.outputCanvas = localKodachromeCanvas(item.sourceCanvas, settings());
+        item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
+        item.error = null;
+        fallbackMode = true;
+      } catch (fallbackErr) {
+        console.error(fallbackErr);
+        item.error = fallbackErr.message || err.message || 'Processing failed';
+      }
+    } else {
+      item.error = err.message || 'Processing failed';
+    }
   } finally {
     item.processing = false;
     renderGallery();
@@ -322,12 +422,13 @@ async function processIndex(index) {
 }
 
 async function processItems(indices, options = {}) {
-  if (busy || !session) return;
+  if (busy) return;
   busy = true;
   refreshButtons();
   for (const index of indices) await processIndex(index);
   busy = false;
-  setStatus(options.auto ? 'Filtered preview ready. Save checked files whenever you want.' : 'Done. Save checked files or everything as a ZIP.');
+  const mode = fallbackMode && !neuralAvailable ? ' Local browser film filter was used.' : '';
+  setStatus((options.auto ? 'Filtered preview ready. Save checked files whenever you want.' : 'Done. Save checked files or everything as a ZIP.') + mode);
   refreshButtons();
 }
 
@@ -356,13 +457,25 @@ async function downloadItemsZip(list, filename) {
   busy = true;
   refreshButtons();
   const done = list.filter(x => x.outputBlob);
-  setStatus(`Building ZIP with ${done.length} image${done.length === 1 ? '' : 's'}…`);
-  const zip = new JSZip();
-  for (const item of done) zip.file(filteredName(item.file.name), item.outputBlob);
-  const blob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(blob, filename);
+  if (!done.length) {
+    busy = false;
+    setStatus('No filtered images are ready to save.');
+    refreshButtons();
+    return;
+  }
+
+  if (window.JSZip) {
+    setStatus(`Building ZIP with ${done.length} image${done.length === 1 ? '' : 's'}…`);
+    const zip = new JSZip();
+    for (const item of done) zip.file(filteredName(item.file.name), item.outputBlob);
+    const blob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(blob, filename);
+    setStatus('ZIP ready.');
+  } else {
+    setStatus(`Saving ${done.length} filtered image${done.length === 1 ? '' : 's'} individually because ZIP support did not load.`);
+    for (const item of done) downloadBlob(item.outputBlob, filteredName(item.file.name));
+  }
   busy = false;
-  setStatus('ZIP ready.');
   refreshButtons();
 }
 
@@ -388,7 +501,7 @@ els.fileInput.addEventListener('change', async e => {
 els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('drag'); });
 els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));
 els.dropZone.addEventListener('drop', e => { e.preventDefault(); els.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
-els.compareSlider.addEventListener('input', updateComparisonClip);
+if (els.compareSlider) els.compareSlider.addEventListener('input', updateComparisonClip);
 els.processSelected.addEventListener('click', () => processItems(items.map((item, index) => item.checked ? index : -1).filter(index => index >= 0)));
 els.processAll.addEventListener('click', () => processItems(items.map((_, i) => i)));
 els.downloadSelected.addEventListener('click', () => downloadItemsZip(items.filter(item => item.checked), 'kodachrome_checked_filtered.zip'));
