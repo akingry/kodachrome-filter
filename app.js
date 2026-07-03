@@ -36,6 +36,8 @@ let fallbackMode = false;
 let items = [];
 let selectedIndex = -1;
 let busy = false;
+let sliderTimer = null;
+let rerunAfterBusy = false;
 
 function setStatus(message) { els.status.textContent = message; }
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
@@ -46,6 +48,10 @@ function settings() {
     contrast: Number(els.contrast.value) / 100,
     maxEdge: Number(els.maxEdge.value),
   };
+}
+function settingsKey() {
+  const s = settings();
+  return `${s.strength}|${s.grain}|${s.contrast}|${s.maxEdge}|${neuralAvailable ? 'neural' : 'local'}`;
 }
 function updateSliderLabels() {
   els.strengthValue.textContent = `${els.strength.value}%`;
@@ -360,7 +366,7 @@ async function addFiles(fileList) {
       const thumbCanvas = drawImageToCanvas(img, 360);
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
       if (!thumbBlob) throw new Error(`Could not make a thumbnail for ${file.name}.`);
-      items.push({ file, sourceCanvas, sourceUrl: canvasDataUrl(sourceCanvas), thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, outputUrl: null, processing: false, error: null, checked: true });
+      items.push({ file, sourceCanvas, sourceUrl: canvasDataUrl(sourceCanvas), thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, outputUrl: null, outputSettingsKey: null, processing: false, error: null, checked: true });
       loaded++;
     } catch (err) {
       console.error(err);
@@ -406,6 +412,7 @@ async function processIndex(index) {
     if (!item.outputBlob) throw new Error('Could not encode the filtered image.');
     revokeItemUrl(item, 'outputUrl');
     item.outputUrl = URL.createObjectURL(item.outputBlob);
+    item.outputSettingsKey = settingsKey();
   } catch (err) {
     console.error(err);
     if (neuralAvailable) {
@@ -416,6 +423,7 @@ async function processIndex(index) {
         if (!item.outputBlob) throw new Error('Could not encode the filtered image.');
         revokeItemUrl(item, 'outputUrl');
         item.outputUrl = URL.createObjectURL(item.outputBlob);
+        item.outputSettingsKey = settingsKey();
         item.error = null;
         fallbackMode = true;
       } catch (fallbackErr) {
@@ -441,6 +449,10 @@ async function processItems(indices, options = {}) {
   const mode = fallbackMode && !neuralAvailable ? ' Local browser film filter was used.' : '';
   setStatus((options.auto ? 'Filtered preview ready. Save checked files whenever you want.' : 'Done. Save checked files or everything as a ZIP.') + mode);
   refreshButtons();
+  if (rerunAfterBusy) {
+    rerunAfterBusy = false;
+    scheduleSelectedPreviewUpdate(50);
+  }
 }
 
 function filteredName(name) {
@@ -463,7 +475,7 @@ async function downloadItemsZip(list, filename) {
   if (!list.length || busy) return;
   const missing = list
     .map(item => items.indexOf(item))
-    .filter(index => index >= 0 && !items[index].outputBlob);
+    .filter(index => index >= 0 && (!items[index].outputBlob || items[index].outputSettingsKey !== settingsKey()));
   if (missing.length) await processItems(missing);
   busy = true;
   refreshButtons();
@@ -507,7 +519,38 @@ function clearAll() {
   refreshButtons();
 }
 
-['strength', 'grain', 'contrast', 'maxEdge'].forEach(id => els[id].addEventListener('input', updateSliderLabels));
+function markOutputsStale() {
+  items.forEach(item => {
+    // Keep the previous preview visible while the new slider setting is processing.
+    // The stale key makes save/filter operations regenerate before downloading.
+    item.outputSettingsKey = null;
+  });
+  renderGallery();
+  renderPreview();
+  refreshButtons();
+}
+
+function scheduleSelectedPreviewUpdate(delay = 180) {
+  clearTimeout(sliderTimer);
+  sliderTimer = setTimeout(() => {
+    if (selectedIndex < 0) return;
+    if (busy) {
+      rerunAfterBusy = true;
+      return;
+    }
+    processItems([selectedIndex], { auto: true });
+  }, delay);
+}
+
+function handleSliderInput() {
+  updateSliderLabels();
+  if (!items.length) return;
+  markOutputsStale();
+  setStatus('Updating preview with current slider settings…');
+  scheduleSelectedPreviewUpdate();
+}
+
+['strength', 'grain', 'contrast', 'maxEdge'].forEach(id => els[id].addEventListener('input', handleSliderInput));
 els.fileInput.addEventListener('change', async e => {
   await addFiles(e.target.files);
   e.target.value = '';
