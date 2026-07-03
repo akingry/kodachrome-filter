@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Kodachrome Filter</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20260703b" />
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
@@ -29,15 +29,15 @@
       <div class="sliders">
         <label>
           <span>Filter strength <b id="strengthValue">55%</b></span>
-          <input id="strength" type="range" min="0" max="100" value="55" />
+          <input id="strength" type="range" min="0" max="100" value="80" />
         </label>
         <label>
           <span>Film grain <b id="grainValue">0.8%</b></span>
           <input id="grain" type="range" min="0" max="35" value="8" />
         </label>
         <label>
-          <span>Contrast <b id="contrastValue">100%</b></span>
-          <input id="contrast" type="range" min="85" max="120" value="100" />
+          <span>Contrast <b id="contrastValue">108%</b></span>
+          <input id="contrast" type="range" min="85" max="120" value="108" />
         </label>
         <label>
           <span>Max output edge <b id="maxEdgeValue">2400 px</b></span>
@@ -71,7 +71,7 @@
           <div class="compare-label">Filtered preview</div>
           <canvas id="afterCanvas"></canvas>
         </div>
-        <div class="empty-copy">Choose one or more images to begin.</div>
+        <div class="empty-copy" id="emptyCopy">Choose one or more images to begin.</div>
       </div>
       <div class="preview-actions">
         <button id="prevBtn" disabled>Previous</button>
@@ -92,6 +92,6 @@
     Built for GitHub Pages. Uses your trained Kodachrome neural model in-browser.
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260703b"></script>
 </body>
 </html>

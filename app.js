@@ -23,6 +23,7 @@ const els = {
   afterCanvas: document.getElementById('afterCanvas'),
   compareSlider: document.getElementById('compareSlider'),
   wipe: document.getElementById('wipe'),
+  emptyCopy: document.getElementById('emptyCopy'),
   prevBtn: document.getElementById('prevBtn'),
   nextBtn: document.getElementById('nextBtn'),
   gallery: document.getElementById('gallery'),
@@ -228,16 +229,16 @@ function localKodachromeCanvas(sourceCanvas, opts) {
     const sb = data[i + 2] / 255;
     const lum = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
 
-    // Warm highlights, deeper cyans/shadows, saturated reds/yellows: a robust local fallback.
-    let r = sr * 1.10 + sg * 0.035 - sb * 0.025;
-    let g = sg * 1.02 + sr * 0.018;
-    let b = sb * 0.86 + sg * 0.045;
-    r += Math.max(0, lum - 0.52) * 0.08;
-    g += Math.max(0, lum - 0.50) * 0.035;
-    b -= Math.max(0, lum - 0.45) * 0.055;
-    r = (r - 0.5) * 1.08 + 0.5;
-    g = (g - 0.5) * 1.04 + 0.5;
-    b = (b - 0.5) * 1.10 + 0.5;
+    // Warm highlights, deeper cyan/blue shadows, saturated reds/yellows: intentionally visible.
+    let r = sr * 1.18 + sg * 0.045 - sb * 0.04;
+    let g = sg * 1.05 + sr * 0.025;
+    let b = sb * 0.76 + sg * 0.055;
+    r += Math.max(0, lum - 0.48) * 0.13;
+    g += Math.max(0, lum - 0.50) * 0.045;
+    b -= Math.max(0, lum - 0.40) * 0.10;
+    r = (r - 0.5) * 1.16 + 0.5;
+    g = (g - 0.5) * 1.08 + 0.5;
+    b = (b - 0.5) * 1.20 + 0.5;
 
     r = sr * (1 - strength) + r * strength;
     g = sg * (1 - strength) + g * strength;
@@ -268,6 +269,7 @@ async function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.95) {
 function copyCanvas(src, dst) {
   dst.width = src.width;
   dst.height = src.height;
+  dst.style.aspectRatio = `${src.width} / ${src.height}`;
   const ctx = dst.getContext('2d');
   ctx.clearRect(0, 0, dst.width, dst.height);
   ctx.drawImage(src, 0, 0);
@@ -292,9 +294,11 @@ function renderPreview() {
     els.previewTitle.textContent = 'No photo selected';
     els.previewMeta.textContent = '';
     els.comparison.classList.add('empty');
+    if (els.emptyCopy) els.emptyCopy.hidden = false;
     return;
   }
   els.comparison.classList.remove('empty');
+  if (els.emptyCopy) els.emptyCopy.hidden = true;
   els.previewTitle.textContent = item.file.name;
   els.previewMeta.textContent = `${item.sourceCanvas.width} × ${item.sourceCanvas.height}`;
   copyCanvas(item.sourceCanvas, els.beforeCanvas);

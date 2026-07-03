@@ -15,6 +15,7 @@
 }
 
 * { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
 body {
   margin: 0;
   min-height: 100vh;
@@ -64,6 +65,7 @@ h2 { margin: 0; }
   padding: 0 clamp(1rem, 4vw, 3rem) 3rem;
 }
 .panel {
+  min-width: 0;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 24px;
@@ -94,57 +96,59 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
 .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.6rem; }
 .status { color: var(--muted); min-height: 2.5em; }
 
-.preview-panel { padding: 1rem; min-height: 520px; }
+.preview-panel { padding: 1rem; min-height: 520px; min-width: 0; overflow: hidden; }
 .preview-header { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; color: var(--muted); margin-bottom: 0.75rem; }
 .preview-header h2 { color: var(--text); font-size: 1.15rem; overflow-wrap: anywhere; }
 .comparison {
   position: relative;
   border-radius: 18px;
-  overflow: hidden;
+  overflow: auto;
   min-height: 440px;
   background: #090706;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  display: flex;
   gap: 1px;
   border: 1px solid rgba(255, 222, 172, 0.12);
 }
 .compare-pane {
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 280px;
   min-height: 440px;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  place-items: stretch;
+  display: flex;
+  flex-direction: column;
   background: rgba(0, 0, 0, 0.22);
 }
 .compare-label {
+  flex: 0 0 auto;
   padding: 0.65rem 0.85rem;
   color: var(--gold);
   font-size: 0.78rem;
   font-weight: 850;
   letter-spacing: 0.08em;
+  text-align: center;
   text-transform: uppercase;
   background: rgba(0, 0, 0, 0.32);
   border-bottom: 1px solid rgba(255, 222, 172, 0.12);
 }
 .comparison canvas {
-  align-self: center;
-  justify-self: center;
-  max-width: 100%;
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: calc(100% - 1rem);
   max-height: 390px;
   width: auto;
   height: auto;
+  margin: auto;
   object-fit: contain;
 }
+.empty { display: grid; place-items: center; overflow: hidden; }
 .empty .compare-pane { display: none; }
 .empty-copy {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
   color: var(--muted);
+  padding: 1rem;
+  text-align: center;
   z-index: 5;
 }
-.comparison:not(.empty) .empty-copy { display: none; }
+.empty-copy[hidden], .comparison:not(.empty) .empty-copy { display: none !important; }
 .preview-actions { display: flex; justify-content: center; gap: 0.65rem; margin-top: 0.8rem; }
 
 .gallery-panel { grid-column: 2; padding: 1rem; }
@@ -184,7 +188,21 @@ footer { color: var(--muted); text-align: center; padding: 0 1rem 2rem; }
   .app-shell { grid-template-columns: 1fr; }
   .controls { position: static; }
   .gallery-panel { grid-column: auto; }
-  .comparison { grid-template-columns: 1fr; min-height: 360px; }
-  .compare-pane { min-height: 320px; }
-  .comparison canvas { max-height: 270px; }
+  .button-row { grid-template-columns: 1fr; }
+  .preview-header { display: block; }
+  .comparison { min-height: 360px; align-items: stretch; overflow: hidden; }
+  .compare-pane { flex: 1 1 50%; min-width: 0; min-height: 360px; }
+  .compare-label { padding: 0.55rem 0.25rem; font-size: 0.68rem; letter-spacing: 0.04em; }
+  .comparison canvas { max-height: 300px; max-width: calc(100% - 0.35rem); }
+}
+
+@media (max-width: 520px) {
+  .preview-panel { padding: 0.7rem; }
+  .hero { padding: 1rem; }
+  h1 { font-size: 2.2rem; }
+  .app-shell { padding-inline: 0.65rem; }
+  .preview-panel { padding: 0.55rem; }
+  .comparison { min-height: 300px; }
+  .compare-pane { min-height: 300px; }
+  .comparison canvas { max-height: 250px; }
 }
