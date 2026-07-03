@@ -129,7 +129,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); }
   background: rgba(0, 0, 0, 0.32);
   border-bottom: 1px solid rgba(255, 222, 172, 0.12);
 }
-.comparison canvas {
+.preview-image {
   display: block;
   flex: 1 1 auto;
   min-height: 0;
@@ -193,7 +193,7 @@ footer { color: var(--muted); text-align: center; padding: 0 1rem 2rem; }
   .comparison { min-height: 360px; align-items: stretch; overflow: hidden; }
   .compare-pane { flex: 1 1 50%; min-width: 0; min-height: 360px; }
   .compare-label { padding: 0.55rem 0.25rem; font-size: 0.68rem; letter-spacing: 0.04em; }
-  .comparison canvas { max-height: 300px; max-width: calc(100% - 0.35rem); }
+  .preview-image { max-height: 300px; max-width: calc(100% - 0.35rem); }
 }
 
 @media (max-width: 520px) {
@@ -204,5 +204,5 @@ footer { color: var(--muted); text-align: center; padding: 0 1rem 2rem; }
   .preview-panel { padding: 0.55rem; }
   .comparison { min-height: 300px; }
   .compare-pane { min-height: 300px; }
-  .comparison canvas { max-height: 250px; }
+  .preview-image { max-height: 250px; }
 }

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Kodachrome Filter</title>
-  <link rel="stylesheet" href="styles.css?v=20260703b" />
+  <link rel="stylesheet" href="styles.css?v=20260703c" />
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
@@ -65,11 +65,11 @@
       <div id="comparison" class="comparison empty">
         <div class="compare-pane original-pane">
           <div class="compare-label">Original</div>
-          <canvas id="beforeCanvas"></canvas>
+          <img id="beforeImage" class="preview-image" alt="Original preview" />
         </div>
         <div class="compare-pane filtered-pane">
           <div class="compare-label">Filtered preview</div>
-          <canvas id="afterCanvas"></canvas>
+          <img id="afterImage" class="preview-image" alt="Filtered preview" />
         </div>
         <div class="empty-copy" id="emptyCopy">Choose one or more images to begin.</div>
       </div>
@@ -92,6 +92,6 @@
     Built for GitHub Pages. Uses your trained Kodachrome neural model in-browser.
   </footer>
 
-  <script src="app.js?v=20260703b"></script>
+  <script src="app.js?v=20260703c"></script>
 </body>
 </html>

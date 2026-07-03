@@ -19,8 +19,8 @@ const els = {
   previewTitle: document.getElementById('previewTitle'),
   previewMeta: document.getElementById('previewMeta'),
   comparison: document.getElementById('comparison'),
-  beforeCanvas: document.getElementById('beforeCanvas'),
-  afterCanvas: document.getElementById('afterCanvas'),
+  beforeImage: document.getElementById('beforeImage'),
+  afterImage: document.getElementById('afterImage'),
   compareSlider: document.getElementById('compareSlider'),
   wipe: document.getElementById('wipe'),
   emptyCopy: document.getElementById('emptyCopy'),
@@ -266,13 +266,15 @@ async function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.95) {
   return new Promise(resolve => canvas.toBlob(resolve, type, quality));
 }
 
-function copyCanvas(src, dst) {
-  dst.width = src.width;
-  dst.height = src.height;
-  dst.style.aspectRatio = `${src.width} / ${src.height}`;
-  const ctx = dst.getContext('2d');
-  ctx.clearRect(0, 0, dst.width, dst.height);
-  ctx.drawImage(src, 0, 0);
+function canvasDataUrl(canvas, type = 'image/jpeg', quality = 0.92) {
+  return canvas.toDataURL(type, quality);
+}
+
+function revokeItemUrl(item, key) {
+  if (item && item[key]) {
+    URL.revokeObjectURL(item[key]);
+    item[key] = null;
+  }
 }
 
 function updateComparisonClip() {
@@ -301,8 +303,8 @@ function renderPreview() {
   if (els.emptyCopy) els.emptyCopy.hidden = true;
   els.previewTitle.textContent = item.file.name;
   els.previewMeta.textContent = `${item.sourceCanvas.width} × ${item.sourceCanvas.height}`;
-  copyCanvas(item.sourceCanvas, els.beforeCanvas);
-  copyCanvas(item.outputCanvas || item.sourceCanvas, els.afterCanvas);
+  els.beforeImage.src = item.sourceUrl;
+  els.afterImage.src = item.outputUrl || item.sourceUrl;
   updateComparisonClip();
 }
 
@@ -358,7 +360,7 @@ async function addFiles(fileList) {
       const thumbCanvas = drawImageToCanvas(img, 360);
       const thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
       if (!thumbBlob) throw new Error(`Could not make a thumbnail for ${file.name}.`);
-      items.push({ file, sourceCanvas, thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, processing: false, error: null, checked: true });
+      items.push({ file, sourceCanvas, sourceUrl: canvasDataUrl(sourceCanvas), thumbUrl: URL.createObjectURL(thumbBlob), outputCanvas: null, outputBlob: null, outputUrl: null, processing: false, error: null, checked: true });
       loaded++;
     } catch (err) {
       console.error(err);
@@ -402,6 +404,8 @@ async function processIndex(index) {
     }
     item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
     if (!item.outputBlob) throw new Error('Could not encode the filtered image.');
+    revokeItemUrl(item, 'outputUrl');
+    item.outputUrl = URL.createObjectURL(item.outputBlob);
   } catch (err) {
     console.error(err);
     if (neuralAvailable) {
@@ -409,6 +413,9 @@ async function processIndex(index) {
       try {
         item.outputCanvas = localKodachromeCanvas(item.sourceCanvas, settings());
         item.outputBlob = await canvasToBlob(item.outputCanvas, 'image/jpeg', 0.95);
+        if (!item.outputBlob) throw new Error('Could not encode the filtered image.');
+        revokeItemUrl(item, 'outputUrl');
+        item.outputUrl = URL.createObjectURL(item.outputBlob);
         item.error = null;
         fallbackMode = true;
       } catch (fallbackErr) {
@@ -488,7 +495,10 @@ async function downloadZip() {
 }
 
 function clearAll() {
-  items.forEach(item => URL.revokeObjectURL(item.thumbUrl));
+  items.forEach(item => {
+    URL.revokeObjectURL(item.thumbUrl);
+    revokeItemUrl(item, 'outputUrl');
+  });
   items = [];
   selectedIndex = -1;
   els.gallery.innerHTML = '';
